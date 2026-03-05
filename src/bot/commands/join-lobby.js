@@ -5,9 +5,10 @@ export async function joinLobbyCommand(ctx) {
   const userId = ctx.from.id;
   const args = ctx.message.text.split(' ');
   const lobbyId = args[1];
+  const providedPassword = args[2];
 
   if (!lobbyId) {
-    await ctx.reply('❌ Usage: /join_lobby <lobby_id>\n\nExample: /join_lobby 123');
+    await ctx.reply('Usage: /join_lobby <lobby_id> [password]\n\nExample: /join_lobby 123 mypass');
     return;
   }
 
@@ -16,7 +17,7 @@ export async function joinLobbyCommand(ctx) {
   try {
     // Check if lobby exists
     const lobbyResult = await db.query(
-      'SELECT id, status FROM lobbies WHERE id = $1',
+      'SELECT id, status, password FROM lobbies WHERE id = $1',
       [lobbyId]
     );
 
@@ -29,6 +30,29 @@ export async function joinLobbyCommand(ctx) {
 
     if (lobby.status !== 'waiting') {
       await ctx.reply('❌ This lobby is not accepting new players.');
+      return;
+    }
+
+    // Check password if required
+    if (lobby.password) {
+      if (!providedPassword) {
+        await ctx.reply(`❌ This lobby is password protected!\n\nUse: /join_lobby ${lobbyId} <password>`);
+        return;
+      }
+      if (providedPassword !== lobby.password) {
+        await ctx.reply('❌ Wrong password!');
+        return;
+      }
+    }
+
+    // Check if user has at least 1 fact
+    const factsResult = await db.query(
+      'SELECT COUNT(*) as count FROM facts WHERE user_id = $1',
+      [userId]
+    );
+
+    if (factsResult.rows[0].count === 0) {
+      await ctx.reply('❌ You need at least 1 fact to join a lobby!\n\nAdd facts first: /my_facts');
       return;
     }
 

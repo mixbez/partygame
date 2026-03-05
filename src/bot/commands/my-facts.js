@@ -21,10 +21,10 @@ export async function myFactsCommand(ctx) {
     let message = `📝 Your Facts (${facts.length}/3):\n\n`;
     facts.forEach((fact, index) => {
       message += `${index + 1}. ${fact.content}\n`;
-      message += `   /delete_${fact.id} - Delete\n\n`;
+      message += `   /delete_fact ${fact.id}\n\n`;
     });
 
-    message += '\nSend a new fact to add more (up to 3 total)';
+    message += 'Send a new fact to add more (up to 3 total)';
 
     await ctx.reply(message);
   } catch (error) {

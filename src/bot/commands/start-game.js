@@ -1,4 +1,5 @@
 import { getDb } from '../../db/index.js';
+import { handleStartGame } from '../handlers/game-flow.js';
 
 export async function startGameCommand(ctx) {
   const args = ctx.message.text.split(' ');
@@ -50,10 +51,7 @@ export async function startGameCommand(ctx) {
     }
 
     // Call the game start logic
-    await db.query(
-      'UPDATE lobbies SET status = $1 WHERE id = $2',
-      ['started', lobbyId]
-    );
+    await handleStartGame(ctx, lobbyId);
 
     await ctx.reply(`✅ Game #${lobbyId} started!\n\nNotifying all ${participants.length} players...`);
   } catch (error) {

@@ -11,6 +11,8 @@ import { cancelLobbyCommand } from './commands/cancel-lobby.js';
 import { lobbyStatusCommand } from './commands/lobby-status.js';
 import { editLobbyCommand } from './commands/edit-lobby.js';
 import { endGameCommand } from './commands/end-game.js';
+import { createTestLobbyCommand } from './commands/create-test-lobby.js';
+import { deleteFactCommand } from './commands/delete-fact.js';
 import { handleFactInput } from './handlers/fact-input.js';
 
 export async function startBot(bot) {
@@ -45,6 +47,8 @@ export async function startBot(bot) {
   bot.command('lobby_status', (ctx) => lobbyStatusCommand(ctx));
   bot.command('edit_lobby', (ctx) => editLobbyCommand(ctx));
   bot.command('end_game', (ctx) => endGameCommand(ctx));
+  bot.command('create_test_lobby', (ctx) => createTestLobbyCommand(ctx));
+  bot.command('delete_fact', (ctx) => deleteFactCommand(ctx));
 
   // Message handler for text input
   bot.on('message', async (ctx) => {
