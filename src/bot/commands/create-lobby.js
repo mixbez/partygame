@@ -6,46 +6,48 @@ export async function createLobbyCommand(ctx) {
   const db = getDb();
 
   try {
-    // Create lobby with defaults
     const result = await db.query(
       `INSERT INTO lobbies (host_id, facts_per_player, facts_to_win, mode, status)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [userId, 2, 3, 'online', 'waiting']
+      [userId, 10, 7, 'online', 'waiting']
     );
 
     const lobbyId = result.rows[0].id;
 
-    // Add host as participant
     await db.query(
       `INSERT INTO lobby_participants (lobby_id, user_id, ready) VALUES ($1, $2, $3)`,
       [lobbyId, userId, true]
     );
 
-    // Store lobby session
     await redis.set(`lobby:${lobbyId}`, {
-      id: lobbyId,
-      host_id: userId,
-      status: 'waiting',
-      participants: [userId],
-    }, 3600); // 1 hour TTL
+      id: lobbyId, host_id: userId, status: 'waiting', participants: [userId],
+    }, 3600);
 
     const message = `
-✅ Lobby Created!
-
-🎮 Lobby ID: ${lobbyId}
+✅ Lobby #${lobbyId} created!
 
 Settings:
-- Facts per player: 2
-- Facts to win: 3
-- Mode: Online
-- Status: Waiting for players
+- Facts per player: 10
+- Facts to win: 7
+- Mode: online
+- Password: none
 
-Share this ID with friends to let them join!
+What to do next:
+/lobby_status ${lobbyId} — view current players
+/join_lobby ${lobbyId} — share this with friends
 
-/join_lobby ${lobbyId} - Friends can use this command
+Change settings (while waiting):
+/edit_lobby ${lobbyId} facts_per_player 5
+/edit_lobby ${lobbyId} facts_to_win 3
+/edit_lobby ${lobbyId} mode offline
+/edit_lobby ${lobbyId} password secret123
 
-Once everyone joins, you can start the game
+When everyone joined:
+/start_game ${lobbyId}
+
+Cancel:
+/cancel_lobby ${lobbyId}
     `.trim();
 
     await ctx.reply(message);

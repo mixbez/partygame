@@ -1,6 +1,11 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { Telegraf } from 'telegraf';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { initDb, closeDb } from './db/index.js';
 import { initRedis, closeRedis } from './redis/index.js';
 import { startBot } from './bot/index.js';
@@ -68,6 +73,15 @@ async function start() {
     bot = new Telegraf(process.env.PARTYGAME_BOT_TOKEN);
     await startBot(bot);
     console.log('✅ Bot initialized');
+
+    // Serve frontend static files at /game
+    await app.register(fastifyStatic, {
+      root: join(__dirname, '../frontend-dist'),
+      prefix: '/game/',
+      index: 'index.html',
+    });
+    // Serve index.html for /game (without trailing slash, query params preserved)
+    app.get('/game', (req, reply) => reply.sendFile('index.html'));
 
     // Register API routes
     console.log('📍 Registering API routes...');

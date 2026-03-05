@@ -3,8 +3,6 @@ import FactCard from './FactCard';
 import NicknameSelector from './NicknameSelector';
 import ScoreBoard from './ScoreBoard';
 import VictoryScreen from './VictoryScreen';
-import crypto from 'crypto-js';
-
 export default function GameScreen({ state, onChange }) {
   const [currentFactIndex, setCurrentFactIndex] = useState(0);
   const [feedback, setFeedback] = useState(null);
@@ -21,11 +19,6 @@ export default function GameScreen({ state, onChange }) {
     }
 
     try {
-      // Compute hash locally for verification
-      const computedHash = crypto
-        .SHA256(`${currentFact.id}${nickname}${state.gameSecret}`)
-        .toString();
-
       const response = await fetch(
         `/api/partygame/game/${state.lobbyId}/${state.playerId}/${state.token}/validate`,
         {
@@ -34,7 +27,6 @@ export default function GameScreen({ state, onChange }) {
           body: JSON.stringify({
             factId: currentFact.id,
             guessedNickname: nickname,
-            computedHash,
           }),
         }
       );

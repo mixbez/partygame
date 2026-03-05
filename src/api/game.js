@@ -91,9 +91,9 @@ export async function setupGameRoutes(app) {
   // Validate guess (offline mode)
   app.post('/api/partygame/game/:lobbyId/:playerId/:token/validate', async (request, reply) => {
     const { lobbyId, playerId, token } = request.params;
-    const { factId, guessedNickname, computedHash } = request.body;
+    const { factId, guessedNickname } = request.body;
 
-    if (!factId || !guessedNickname || !computedHash) {
+    if (!factId || !guessedNickname) {
       reply.code(400);
       return { error: 'Missing required fields' };
     }
@@ -106,10 +106,12 @@ export async function setupGameRoutes(app) {
         return { error: 'Invalid token' };
       }
 
-      // Get the stored hash
+      // Get the correct nickname for the fact author
       const assignmentResult = await db.query(
-        `SELECT answer_hash FROM game_assignments
-         WHERE lobby_id = $1 AND fact_id = $2 AND assigned_to_user_id = $3`,
+        `SELECT lp.nickname AS correct_nickname
+         FROM game_assignments ga
+         JOIN lobby_participants lp ON lp.lobby_id = ga.lobby_id AND lp.user_id = ga.from_user_id
+         WHERE ga.lobby_id = $1 AND ga.fact_id = $2 AND ga.assigned_to_user_id = $3`,
         [lobbyId, factId, playerId]
       );
 
@@ -118,8 +120,8 @@ export async function setupGameRoutes(app) {
         return { error: 'Fact assignment not found' };
       }
 
-      const { answer_hash } = assignmentResult.rows[0];
-      const isCorrect = answer_hash === computedHash;
+      const { correct_nickname } = assignmentResult.rows[0];
+      const isCorrect = correct_nickname === guessedNickname;
 
       if (isCorrect) {
         // Update player points
