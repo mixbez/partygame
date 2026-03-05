@@ -197,13 +197,13 @@ backend-partygame (3002)
 ## 📝 Environment Variables
 
 ```env
-PARTYGAME_BOT_TOKEN=8716383952:AAFP-EY_NjId-ux6t5ZNMv3KaEuTdWC7Wzg
-BOT_WEBHOOK_URL=https://v2202504269079335176.supersrv.de
-DATABASE_URL=postgresql://partygame:partygame_pass_secure@postgres:5432/partygame
-REDIS_URL=redis://redis:6379
-REDIS_KEY_PREFIX=partygame:
-PORT=3002
-NODE_ENV=production
+PARTYGAME_BOT_TOKEN=
+BOT_WEBHOOK_URL=
+DATABASE_URL=
+REDIS_URL=
+REDIS_KEY_PREFIX=
+PORT=
+NODE_ENV=
 ATTRIBUTION=by aboutmisha.com
 ```
 
