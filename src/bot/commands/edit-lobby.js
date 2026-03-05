@@ -9,22 +9,25 @@ export async function editLobbyCommand(ctx) {
   if (!lobbyId) {
     const message = `Usage: /edit_lobby <lobby_id> <param> <value>
 
-Examples:
-  /edit_lobby 3 facts_per_player 3
-  /edit_lobby 3 facts_to_win 5
-  /edit_lobby 3 password mypass123
-
 Parameters:
-  facts_per_player - Number of facts per player (1-5)
-  facts_to_win - Facts needed to win (1-10)
-  password - Lobby password (or 'none' to remove)`;
+  facts_per_player - Facts each player gets (default: 10, no max)
+  facts_to_win     - Facts needed to win, 1 to facts_per_player (default: 7)
+  mode             - online or offline
+  password         - set password, or "none" to remove
+
+Examples:
+  /edit_lobby 3 facts_per_player 10
+  /edit_lobby 3 facts_to_win 5
+  /edit_lobby 3 mode offline
+  /edit_lobby 3 password secret123
+  /edit_lobby 3 password none`;
 
     await ctx.reply(message);
     return;
   }
 
   if (!param || !value) {
-    await ctx.reply(`Usage: /edit_lobby ${lobbyId} <param> <value>\n\nExample: /edit_lobby ${lobbyId} facts_per_player 3`);
+    await ctx.reply(`Usage: /edit_lobby ${lobbyId} <param> <value>`);
     return;
   }
 
@@ -32,9 +35,8 @@ Parameters:
   const db = getDb();
 
   try {
-    // Check if user is host
     const lobbyResult = await db.query(
-      'SELECT host_id, status FROM lobbies WHERE id = $1',
+      'SELECT host_id, status, facts_per_player FROM lobbies WHERE id = $1',
       [lobbyId]
     );
 
@@ -55,42 +57,53 @@ Parameters:
       return;
     }
 
-    // Validate and update parameter
     switch (param.toLowerCase()) {
-      case 'facts_per_player':
-      case 'facts-per-player': {
+      case 'facts_per_player': {
         const num = parseInt(value);
-        if (num < 1 || num > 5) {
-          await ctx.reply('❌ facts_per_player must be between 1 and 5.');
+        if (isNaN(num) || num < 1) {
+          await ctx.reply('❌ facts_per_player must be at least 1.');
           return;
         }
         await db.query('UPDATE lobbies SET facts_per_player = $1 WHERE id = $2', [num, lobbyId]);
-        await ctx.reply(`✅ Set facts_per_player to ${num}`);
+        await ctx.reply(`✅ facts_per_player set to ${num}`);
         break;
       }
 
-      case 'facts_to_win':
-      case 'facts-to-win': {
+      case 'facts_to_win': {
         const num = parseInt(value);
-        if (num < 1 || num > 10) {
-          await ctx.reply('❌ facts_to_win must be between 1 and 10.');
+        const maxFacts = lobby.facts_per_player;
+        if (isNaN(num) || num < 1) {
+          await ctx.reply('❌ facts_to_win must be at least 1.');
+          return;
+        }
+        if (num > maxFacts) {
+          await ctx.reply(`❌ facts_to_win cannot exceed facts_per_player (${maxFacts}).`);
           return;
         }
         await db.query('UPDATE lobbies SET facts_to_win = $1 WHERE id = $2', [num, lobbyId]);
-        await ctx.reply(`✅ Set facts_to_win to ${num}`);
+        await ctx.reply(`✅ facts_to_win set to ${num}`);
+        break;
+      }
+
+      case 'mode': {
+        if (!['online', 'offline'].includes(value.toLowerCase())) {
+          await ctx.reply('❌ mode must be "online" or "offline".');
+          return;
+        }
+        await db.query('UPDATE lobbies SET mode = $1 WHERE id = $2', [value.toLowerCase(), lobbyId]);
+        await ctx.reply(`✅ mode set to ${value.toLowerCase()}`);
         break;
       }
 
       case 'password': {
         const newPassword = value === 'none' ? null : value;
         await db.query('UPDATE lobbies SET password = $1 WHERE id = $2', [newPassword, lobbyId]);
-        const msg = newPassword ? `✅ Password set to: ${newPassword}` : '✅ Password removed';
-        await ctx.reply(msg);
+        await ctx.reply(newPassword ? `✅ Password set to: ${newPassword}` : '✅ Password removed');
         break;
       }
 
       default:
-        await ctx.reply(`❌ Unknown parameter: ${param}\n\nValid: facts_per_player, facts_to_win, password`);
+        await ctx.reply(`❌ Unknown param: "${param}"\n\nValid: facts_per_player, facts_to_win, mode, password`);
     }
   } catch (error) {
     console.error('❌ Error editing lobby:', error);

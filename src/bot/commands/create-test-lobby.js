@@ -5,9 +5,11 @@ export async function createTestLobbyCommand(ctx) {
   const userId = ctx.from.id;
   const adminId = parseInt(process.env.ADMIN_USER_ID || '0');
 
+  console.log(`🔍 create_test_lobby: userId=${userId} (${typeof userId}), adminId=${adminId} (${typeof adminId}), match=${userId === adminId}`);
+
   // Only admin can create test lobbies
   if (userId !== adminId) {
-    await ctx.reply('❌ Only admin can create test lobbies.');
+    await ctx.reply(`❌ Only admin can create test lobbies. (Your ID: ${userId})`);
     return;
   }
 
