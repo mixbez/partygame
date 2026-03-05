@@ -5,7 +5,6 @@ export async function myFactsCommand(ctx) {
   const db = getDb();
 
   try {
-    // Get user's facts
     const result = await db.query(
       'SELECT id, content FROM facts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 3',
       [userId]
@@ -14,17 +13,25 @@ export async function myFactsCommand(ctx) {
     const facts = result.rows;
 
     if (facts.length === 0) {
-      await ctx.reply('📝 You haven\'t added any facts yet!\n\nSend me your facts one by one. Each fact should be interesting and true!\n\nMax 3 facts allowed.');
+      await ctx.reply(
+        '📝 You have no facts yet.\n\n' +
+        'Just send me any text message and it will be saved as a fact.\n' +
+        'You can add up to 3 facts total.'
+      );
       return;
     }
 
-    let message = `📝 Your Facts (${facts.length}/3):\n\n`;
+    let message = `📝 Your facts (${facts.length}/3):\n\n`;
     facts.forEach((fact, index) => {
       message += `${index + 1}. ${fact.content}\n`;
       message += `   /delete_fact ${index + 1}\n\n`;
     });
 
-    message += 'Send a new fact to add more (up to 3 total)';
+    if (facts.length < 3) {
+      message += 'Send a text message to add another fact.';
+    } else {
+      message += 'Maximum 3 facts reached. Delete one to add another.';
+    }
 
     await ctx.reply(message);
   } catch (error) {

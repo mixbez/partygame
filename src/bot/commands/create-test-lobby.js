@@ -7,7 +7,6 @@ export async function createTestLobbyCommand(ctx) {
 
   console.log(`🔍 create_test_lobby: userId=${userId} (${typeof userId}), adminId=${adminId} (${typeof adminId}), match=${userId === adminId}`);
 
-  // Only admin can create test lobbies
   if (userId !== adminId) {
     await ctx.reply(`❌ Only admin can create test lobbies. (Your ID: ${userId})`);
     return;
@@ -16,7 +15,6 @@ export async function createTestLobbyCommand(ctx) {
   const db = getDb();
 
   try {
-    // Create test lobby with lax settings
     const result = await db.query(
       `INSERT INTO lobbies (host_id, facts_per_player, facts_to_win, mode, status)
        VALUES ($1, $2, $3, $4, $5)
@@ -26,37 +24,25 @@ export async function createTestLobbyCommand(ctx) {
 
     const lobbyId = result.rows[0].id;
 
-    // Add host as participant
     await db.query(
       `INSERT INTO lobby_participants (lobby_id, user_id, ready) VALUES ($1, $2, $3)`,
       [lobbyId, userId, true]
     );
 
-    // Store lobby session
     await redis.set(`lobby:${lobbyId}`, {
-      id: lobbyId,
-      host_id: userId,
-      status: 'waiting',
-      participants: [userId],
-      mode: 'test',
+      id: lobbyId, host_id: userId, status: 'waiting', participants: [userId], mode: 'test',
     }, 3600);
 
-    const message = `
-✅ Test Lobby Created!
-
-🎮 Lobby ID: ${lobbyId}
-🧪 Mode: TEST (no restrictions)
-
-Settings:
-- Facts per player: 1
-- Facts to win: 1
-- No password required
-- No fact requirement
-
-This is for testing only!
-    `.trim();
-
-    await ctx.reply(message);
+    await ctx.reply(
+      `✅ Test lobby #${lobbyId} created!\n\n` +
+      `Mode: TEST — no player/fact restrictions\n` +
+      `Facts per player: 1, Facts to win: 1\n\n` +
+      `Actions:\n` +
+      `/lobby_status ${lobbyId} — view players\n` +
+      `/start_game ${lobbyId} — start immediately\n` +
+      `/edit_lobby ${lobbyId} facts_per_player 2\n` +
+      `/cancel_lobby ${lobbyId} — cancel`
+    );
   } catch (error) {
     console.error('❌ Error creating test lobby:', error);
     await ctx.reply('❌ Error creating test lobby. Try again later.');

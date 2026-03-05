@@ -1,17 +1,12 @@
 import { getDb } from '../../db/index.js';
 import { redis } from '../../redis/index.js';
-import { generateNicknames, distributeFacts, validateDistribution } from '../../game/generator.js';
+import { generateNicknames, distributeFacts } from '../../game/generator.js';
+import crypto from 'crypto';
 
 export async function handleStartGame(ctx, lobbyId) {
   const db = getDb();
 
   try {
-    // Update lobby status to started
-    await db.query(
-      'UPDATE lobbies SET status = $1 WHERE id = $2',
-      ['started', lobbyId]
-    );
-
     // Get lobby settings
     const lobbyResult = await db.query(
       'SELECT facts_per_player, facts_to_win, mode FROM lobbies WHERE id = $1',
@@ -25,22 +20,33 @@ export async function handleStartGame(ctx, lobbyId) {
       [lobbyId]
     );
     const participantIds = participantsResult.rows.map(r => Number(r.user_id));
+    console.log(`🎮 Starting game #${lobbyId}: ${participantIds.length} players`);
 
-    // Get all facts for participants
+    // Check every participant has at least 1 fact
     const factsResult = await db.query(
-      `SELECT id AS "factId", user_id AS "userId"
-       FROM facts
-       WHERE user_id = ANY($1::bigint[])`,
+      `SELECT id AS "factId", user_id AS "userId" FROM facts WHERE user_id = ANY($1::bigint[])`,
       [participantIds]
     );
 
-    if (factsResult.rows.length === 0) {
-      await ctx.reply('❌ No facts found. Players must add facts before starting.');
+    const participantsWithFacts = new Set(factsResult.rows.map(r => Number(r.userId)));
+    const missingFacts = participantIds.filter(id => !participantsWithFacts.has(id));
+
+    if (missingFacts.length > 0) {
+      const namesResult = await db.query(
+        'SELECT id, first_name, username FROM users WHERE id = ANY($1::bigint[])',
+        [missingFacts]
+      );
+      const names = namesResult.rows.map(r => r.first_name || r.username || r.id).join(', ');
+      await ctx.reply(
+        `❌ Cannot start: some players have no facts.\n\n` +
+        `Players without facts: ${names}\n\n` +
+        `They need to add at least 1 fact first (just send any text message to the bot).`
+      );
       await db.query('UPDATE lobbies SET status = $1 WHERE id = $2', ['waiting', lobbyId]);
       return;
     }
 
-    // Generate nicknames
+    // Generate nicknames and assign
     const nicknames = generateNicknames(participantIds.length);
     for (let i = 0; i < participantIds.length; i++) {
       await db.query(
@@ -48,32 +54,34 @@ export async function handleStartGame(ctx, lobbyId) {
         [nicknames[i], lobbyId, participantIds[i]]
       );
     }
+    const nicknameMap = {};
+    participantIds.forEach((id, i) => { nicknameMap[id] = nicknames[i]; });
 
     // Distribute facts
     let assignments;
     try {
       assignments = distributeFacts(factsResult.rows, participantIds, lobby.facts_per_player);
     } catch (err) {
-      const playerCount = participantIds.length;
-      const factCount = factsResult.rows.length;
       await ctx.reply(
         `❌ Cannot distribute facts: ${err.message}\n\n` +
-        `Players: ${playerCount}, Total facts: ${factCount}, Facts per player needed: ${lobby.facts_per_player}\n\n` +
-        `Each player needs enough facts from others. Use /edit_lobby ${lobbyId} facts_per_player <lower number>.`
+        `Players: ${participantIds.length}, Total facts: ${factsResult.rows.length}, ` +
+        `Facts per player: ${lobby.facts_per_player}\n\n` +
+        `Try /edit_lobby ${lobbyId} facts_per_player <smaller number>`
       );
       await db.query('UPDATE lobbies SET status = $1 WHERE id = $2', ['waiting', lobbyId]);
       return;
     }
 
-    // Save assignments with answer hashes
+    // Update lobby status to started
+    await db.query('UPDATE lobbies SET status = $1 WHERE id = $2', ['started', lobbyId]);
+
+    // Save assignments with hashes
     const gameSecret = Math.random().toString(36).substring(2, 18);
     await redis.set(`game:${lobbyId}:secret`, gameSecret, 86400);
 
     for (const assignment of assignments) {
-      // Find nickname of the fact author
       const authorIdx = participantIds.indexOf(Number(assignment.fromUserId));
       const correctNickname = nicknames[authorIdx];
-      const crypto = await import('crypto');
       const answerHash = crypto
         .createHash('sha256')
         .update(`${assignment.factId}${correctNickname}${gameSecret}`)
@@ -86,10 +94,6 @@ export async function handleStartGame(ctx, lobbyId) {
       );
     }
 
-    // Build nickname map for participant messages
-    const nicknameMap = {};
-    participantIds.forEach((id, i) => { nicknameMap[id] = nicknames[i]; });
-
     // Notify all participants
     let notifiedCount = 0;
     for (const userId of participantIds) {
@@ -99,27 +103,21 @@ export async function handleStartGame(ctx, lobbyId) {
 
       // Get this player's assigned facts
       const playerAssignments = assignments.filter(a => Number(a.assignedToUserId) === userId);
-      const playerFacts = await Promise.all(playerAssignments.map(async (a) => {
-        const factRes = await db.query('SELECT content FROM facts WHERE id = $1', [a.factId]);
-        return factRes.rows[0]?.content;
+      const factContents = await Promise.all(playerAssignments.map(async (a) => {
+        const r = await db.query('SELECT content FROM facts WHERE id = $1', [a.factId]);
+        return r.rows[0]?.content;
       }));
 
-      const myNickname = nicknameMap[userId];
-      let message = `🎮 Game Started!\n\nYour nickname: ${myNickname}\n\nYour facts to guess:\n`;
-      playerFacts.forEach((f, i) => {
-        message += `${i + 1}. ${f}\n`;
-      });
-      message += `\nMatch each fact to the right nickname to earn points!`;
-
-      if (lobby.mode !== 'online') {
-        message += `\n\nOffline mode link: ${gameUrl}`;
-      }
+      let message = `🎮 Game #${lobbyId} started!\n\nYour nickname: ${nicknameMap[userId]}\n\nFacts to guess:\n`;
+      factContents.forEach((f, i) => { message += `${i + 1}. ${f}\n`; });
+      message += `\nMatch each fact to the right player nickname!\n\n🔗 Play: ${gameUrl}`;
 
       try {
         await ctx.telegram.sendMessage(userId, message);
         notifiedCount++;
+        console.log(`✅ Notified player ${userId}`);
       } catch (err) {
-        console.error(`❌ Failed to notify participant ${userId}:`, err.message);
+        console.error(`❌ Failed to notify player ${userId}: ${err.message}`);
       }
     }
 

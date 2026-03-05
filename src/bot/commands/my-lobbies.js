@@ -5,46 +5,54 @@ export async function myLobbiesCommand(ctx) {
   const db = getDb();
 
   try {
-    // Get hosted lobbies
     const hostedResult = await db.query(
-      `SELECT id, status, created_at FROM lobbies
-       WHERE host_id = $1
-       ORDER BY created_at DESC
-       LIMIT 10`,
+      `SELECT id, status, facts_per_player, facts_to_win FROM lobbies
+       WHERE host_id = $1 ORDER BY created_at DESC LIMIT 10`,
       [userId]
     );
 
-    // Get joined lobbies
     const joinedResult = await db.query(
-      `SELECT l.id, l.status, l.host_id, l.created_at FROM lobbies l
+      `SELECT l.id, l.status, l.host_id FROM lobbies l
        INNER JOIN lobby_participants lp ON l.id = lp.lobby_id
        WHERE lp.user_id = $1 AND l.host_id != $2
-       ORDER BY l.created_at DESC
-       LIMIT 10`,
+       ORDER BY l.created_at DESC LIMIT 10`,
       [userId, userId]
     );
 
-    let message = '🎮 **Your Lobbies**\n\n';
-
     if (hostedResult.rows.length === 0 && joinedResult.rows.length === 0) {
-      message += '_No active lobbies._\n\n/create_lobby - Create a new game';
-    } else {
-      if (hostedResult.rows.length > 0) {
-        message += '**📍 Hosted by you:**\n';
-        hostedResult.rows.forEach((lobby) => {
-          const status = lobby.status === 'waiting' ? '⏳' : lobby.status === 'started' ? '🎮' : '✅';
-          message += `${status} Lobby #${lobby.id} - ${lobby.status}\n`;
-        });
-        message += '\n';
-      }
+      await ctx.reply(
+        'You have no active lobbies.\n\n' +
+        '/create_lobby — create a new game\n' +
+        '/join_lobby <id> — join existing game'
+      );
+      return;
+    }
 
-      if (joinedResult.rows.length > 0) {
-        message += '**🤝 Joined:**\n';
-        joinedResult.rows.forEach((lobby) => {
-          const status = lobby.status === 'waiting' ? '⏳' : lobby.status === 'started' ? '🎮' : '✅';
-          message += `${status} Lobby #${lobby.id} - ${lobby.status}\n`;
-        });
-      }
+    let message = 'Your lobbies:\n\n';
+
+    if (hostedResult.rows.length > 0) {
+      message += 'Hosted by you:\n';
+      hostedResult.rows.forEach((lobby) => {
+        const icon = lobby.status === 'waiting' ? '⏳' : lobby.status === 'started' ? '🎮' : '✅';
+        message += `${icon} #${lobby.id} — ${lobby.status}\n`;
+        if (lobby.status === 'waiting') {
+          message += `   /lobby_status ${lobby.id} | /start_game ${lobby.id} | /cancel_lobby ${lobby.id}\n`;
+        } else if (lobby.status === 'started') {
+          message += `   /lobby_status ${lobby.id} | /end_game ${lobby.id}\n`;
+        } else {
+          message += `   /lobby_status ${lobby.id}\n`;
+        }
+      });
+      message += '\n';
+    }
+
+    if (joinedResult.rows.length > 0) {
+      message += 'Joined:\n';
+      joinedResult.rows.forEach((lobby) => {
+        const icon = lobby.status === 'waiting' ? '⏳' : lobby.status === 'started' ? '🎮' : '✅';
+        message += `${icon} #${lobby.id} — ${lobby.status}\n`;
+        message += `   /lobby_status ${lobby.id}\n`;
+      });
     }
 
     await ctx.reply(message);

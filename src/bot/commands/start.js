@@ -2,20 +2,22 @@ export async function startCommand(ctx, attribution) {
   const userName = ctx.from.first_name || 'Friend';
 
   const message = `
-👋 Welcome to Party Game, ${userName}!
+👋 Hi ${userName}! Welcome to Party Game!
 
 ${attribution}
 
-🎮 Party Game is a fun game where you submit facts about yourself and try to guess who submitted each fact!
+How to play:
+1. Add facts about yourself
+2. Create or join a lobby
+3. When the game starts you get others' facts to guess
+4. Match each fact to the right player nickname to earn points!
 
-**Menu:**
-/my_facts - Add or manage your facts
-/create_lobby - Create a new game session
-/join_lobby - Join an existing game
-/my_lobbies - View your hosted games
-/help - Show help
-
-Ready to play? Use the commands above to get started! 🎉
+Get started:
+/my_facts — add or view your facts (you need at least 1 to play)
+/create_lobby — host a new game
+/join_lobby <id> — join someone's game
+/my_lobbies — see your active lobbies
+/help — full guide
   `.trim();
 
   await ctx.reply(message);

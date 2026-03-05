@@ -9,11 +9,12 @@
     "migrate": "node src/db/migrate.js"
   },
   "dependencies": {
+    "@fastify/static": "^7.0.4",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.4.5",
     "fastify": "^4.28.0",
-    "telegraf": "^4.16.3",
     "pg": "^8.12.0",
     "redis": "^4.7.0",
-    "dotenv": "^16.4.5",
-    "crypto-js": "^4.2.0"
+    "telegraf": "^4.16.3"
   }
 }

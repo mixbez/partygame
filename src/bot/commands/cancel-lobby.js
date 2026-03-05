@@ -6,17 +6,14 @@ export async function cancelLobbyCommand(ctx) {
   const lobbyId = args[1];
 
   if (!lobbyId) {
-    await ctx.reply('Usage: /cancel_lobby <lobby_id>\n\nExample: /cancel_lobby 3');
+    await ctx.reply('Usage: /cancel_lobby <lobby_id>\nExample: /cancel_lobby 3');
     return;
   }
 
   const userId = ctx.from.id;
   const db = getDb();
 
-  console.log(`🔍 cancel_lobby: userId=${userId}, lobbyId=${lobbyId}`);
-
   try {
-    // Check if user is host
     const lobbyResult = await db.query(
       'SELECT host_id, status FROM lobbies WHERE id = $1',
       [lobbyId]
@@ -28,30 +25,25 @@ export async function cancelLobbyCommand(ctx) {
     }
 
     const lobby = lobbyResult.rows[0];
-    const hostId = Number(lobby.host_id);
-    console.log(`🔍 Lobby found: host_id=${hostId}, userId=${userId}, match=${hostId === userId}`);
 
-    if (hostId !== userId) {
-      await ctx.reply(`❌ Only the host can cancel the lobby. (You: ${userId}, Host: ${lobby.host_id})`);
+    if (Number(lobby.host_id) !== userId) {
+      await ctx.reply('❌ Only the host can cancel the lobby.');
       return;
     }
 
     if (lobby.status === 'finished') {
-      await ctx.reply('❌ Game is already finished. Can\'t cancel.');
+      await ctx.reply('❌ Game is already finished.');
       return;
     }
 
-    // Delete lobby
-    await db.query(
-      'DELETE FROM lobbies WHERE id = $1',
-      [lobbyId]
-    );
-
-    // Clear Redis cache
+    await db.query('DELETE FROM lobbies WHERE id = $1', [lobbyId]);
     await redis.del(`lobby:${lobbyId}`);
-    await redis.del(`lobby:${lobbyId}:nicknames`);
 
-    await ctx.reply(`✅ Lobby #${lobbyId} cancelled and deleted.`);
+    await ctx.reply(
+      `✅ Lobby #${lobbyId} cancelled.\n\n` +
+      `/create_lobby — create a new lobby\n` +
+      `/my_lobbies — view your lobbies`
+    );
   } catch (error) {
     console.error('❌ Error cancelling lobby:', error);
     await ctx.reply('❌ Error cancelling the lobby. Try again later.');
