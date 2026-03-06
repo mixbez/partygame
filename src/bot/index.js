@@ -14,6 +14,7 @@ import { endGameCommand } from './commands/end-game.js';
 import { createTestLobbyCommand } from './commands/create-test-lobby.js';
 import { deleteFactCommand } from './commands/delete-fact.js';
 import { leaveLobbyCommand } from './commands/leave-lobby.js';
+import { paperCommand } from './commands/paper.js';
 import { handleFactInput } from './handlers/fact-input.js';
 
 export async function startBot(bot) {
@@ -51,6 +52,7 @@ export async function startBot(bot) {
   bot.command('create_test_lobby', (ctx) => createTestLobbyCommand(ctx));
   bot.command('delete_fact', (ctx) => deleteFactCommand(ctx));
   bot.command('leave_lobby', (ctx) => leaveLobbyCommand(ctx));
+  bot.command('paper', (ctx) => paperCommand(ctx));
 
   // Register command menu with Telegram
   await bot.telegram.setMyCommands([
@@ -67,6 +69,7 @@ export async function startBot(bot) {
     { command: 'edit_lobby', description: 'Edit lobby settings' },
     { command: 'cancel_lobby', description: 'Cancel a lobby: /cancel_lobby <id>' },
     { command: 'end_game', description: 'Force end a game: /end_game <id>' },
+    { command: 'paper', description: 'Играть на бумажке (вкл/выкл)' },
   ]);
 
   // Message handler for text input
