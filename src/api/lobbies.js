@@ -115,7 +115,7 @@ export async function setupLobbiesRoutes(app) {
 
       // Get all facts from participants for distribution
       const factsResult = await db.query(
-        `SELECT f.id, f.user_id FROM facts f
+        `SELECT f.id AS "factId", f.user_id AS "userId" FROM facts f
          WHERE f.user_id = ANY($1::BIGINT[])
          LIMIT $2`,
         [participants, participants.length * lobby.facts_per_player * 2]
@@ -141,18 +141,18 @@ export async function setupLobbiesRoutes(app) {
         return { error: 'Fact distribution validation failed' };
       }
 
-      // Store assignments in database
+      // Store assignments in database (BUG-4+5 fix: use fromUserId for hash and store from_user_id)
       for (const assignment of assignments) {
-        const correctNickname = nicknames[participants.indexOf(assignment.assignedToUserId)];
+        const authorNickname = nicknames[participants.map(String).indexOf(String(assignment.fromUserId))];
         const answerHash = crypto
           .createHash('sha256')
-          .update(`${assignment.factId}${correctNickname}${gameSecret}`)
+          .update(`${assignment.factId}${authorNickname}${gameSecret}`)
           .digest('hex');
 
         await db.query(
-          `INSERT INTO game_assignments (lobby_id, fact_id, assigned_to_user_id, answer_hash)
-           VALUES ($1, $2, $3, $4)`,
-          [id, assignment.factId, assignment.assignedToUserId, answerHash]
+          `INSERT INTO game_assignments (lobby_id, fact_id, assigned_to_user_id, from_user_id, answer_hash)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [id, assignment.factId, assignment.assignedToUserId, assignment.fromUserId, answerHash]
         );
       }
 

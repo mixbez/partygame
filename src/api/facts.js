@@ -63,11 +63,17 @@ export async function setupFactsRoutes(app) {
   // Delete fact
   app.delete('/api/partygame/facts/:factId', async (request, reply) => {
     const { factId } = request.params;
+    const { userId } = request.body || {};
+
+    if (!userId) {
+      reply.code(400);
+      return { error: 'Missing userId' };
+    }
 
     try {
       const result = await db.query(
-        'DELETE FROM facts WHERE id = $1 RETURNING id',
-        [factId]
+        'DELETE FROM facts WHERE id = $1 AND user_id = $2 RETURNING id',
+        [factId, userId]
       );
 
       if (result.rows.length === 0) {

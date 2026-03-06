@@ -50,10 +50,8 @@ export async function startGameCommand(ctx) {
       return;
     }
 
-    // Call the game start logic
+    // Call the game start logic (it sends its own confirmation message)
     await handleStartGame(ctx, lobbyId);
-
-    await ctx.reply(`✅ Game #${lobbyId} started!\n\nNotifying all ${participants.length} players...`);
   } catch (error) {
     console.error('❌ Error starting game:', error);
     await ctx.reply('❌ Error starting the game. Try again later.');
