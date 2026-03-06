@@ -72,11 +72,14 @@ export async function handleStartGame(ctx, lobbyId) {
       return;
     }
 
-    // Update lobby status to started
-    await db.query('UPDATE lobbies SET status = $1 WHERE id = $2', ['started', lobbyId]);
+    // Generate cryptographically secure secret (BUG-12 fix)
+    const gameSecret = crypto.randomBytes(32).toString('hex');
 
-    // Save assignments with hashes
-    const gameSecret = Math.random().toString(36).substring(2, 18);
+    // Update lobby status and persist secret to DB (BUG-6 fix)
+    await db.query(
+      'UPDATE lobbies SET status = $1, game_secret = $2, started_at = CURRENT_TIMESTAMP WHERE id = $3',
+      ['started', gameSecret, lobbyId]
+    );
     await redis.set(`game:${lobbyId}:secret`, gameSecret, 86400);
 
     for (const assignment of assignments) {
@@ -130,6 +133,5 @@ export async function handleStartGame(ctx, lobbyId) {
 }
 
 function generateToken() {
-  return Math.random().toString(36).substring(2, 15) +
-    Math.random().toString(36).substring(2, 15);
+  return crypto.randomBytes(16).toString('hex');
 }

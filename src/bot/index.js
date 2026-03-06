@@ -13,6 +13,7 @@ import { editLobbyCommand } from './commands/edit-lobby.js';
 import { endGameCommand } from './commands/end-game.js';
 import { createTestLobbyCommand } from './commands/create-test-lobby.js';
 import { deleteFactCommand } from './commands/delete-fact.js';
+import { leaveLobbyCommand } from './commands/leave-lobby.js';
 import { handleFactInput } from './handlers/fact-input.js';
 
 export async function startBot(bot) {
@@ -25,7 +26,7 @@ export async function startBot(bot) {
         const db = getDb();
         await db.query(
           `INSERT INTO users (id, username, first_name) VALUES ($1, $2, $3)
-           ON CONFLICT (id) DO NOTHING`,
+           ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name`,
           [ctx.from.id, ctx.from.username, ctx.from.first_name]
         );
       }
@@ -49,6 +50,24 @@ export async function startBot(bot) {
   bot.command('end_game', (ctx) => endGameCommand(ctx));
   bot.command('create_test_lobby', (ctx) => createTestLobbyCommand(ctx));
   bot.command('delete_fact', (ctx) => deleteFactCommand(ctx));
+  bot.command('leave_lobby', (ctx) => leaveLobbyCommand(ctx));
+
+  // Register command menu with Telegram
+  await bot.telegram.setMyCommands([
+    { command: 'start', description: 'Start the bot' },
+    { command: 'help', description: 'Show help' },
+    { command: 'my_facts', description: 'View and manage your facts' },
+    { command: 'delete_fact', description: 'Delete a fact: /delete_fact 1' },
+    { command: 'create_lobby', description: 'Create a new game lobby' },
+    { command: 'join_lobby', description: 'Join a lobby: /join_lobby <id>' },
+    { command: 'leave_lobby', description: 'Leave a lobby: /leave_lobby <id>' },
+    { command: 'my_lobbies', description: 'View your active lobbies' },
+    { command: 'lobby_status', description: 'Lobby details: /lobby_status <id>' },
+    { command: 'start_game', description: 'Start the game: /start_game <id>' },
+    { command: 'edit_lobby', description: 'Edit lobby settings' },
+    { command: 'cancel_lobby', description: 'Cancel a lobby: /cancel_lobby <id>' },
+    { command: 'end_game', description: 'Force end a game: /end_game <id>' },
+  ]);
 
   // Message handler for text input
   bot.on('message', async (ctx) => {

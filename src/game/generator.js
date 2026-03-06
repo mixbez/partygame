@@ -6,7 +6,7 @@ const adjectives = [
   'Горячий', 'Холодный', 'Танцующий', 'Ленящийся', 'Мудрый', 'Наивный',
   'Сильный', 'Слабый', 'Золотой', 'Серебряный', 'Чёрный', 'Белый',
   'Ночной', 'Дневной', 'Летучий', 'Стройный', 'Пухлый', 'Острый',
-  'Мягкий', 'Жёсткий', 'Весёлый', 'Грустный', 'Влажный', 'Сухой',
+  'Мягкий', 'Жёсткий', 'Грустный', 'Влажный', 'Сухой',
   'Грязный', 'Чистый', 'Новый', 'Старый', 'Молодой', 'Пожилой'
 ];
 
@@ -90,7 +90,7 @@ export function distributeFacts(facts, participantUserIds, factsPerPlayer) {
   for (const fact of shuffledFacts) {
     // Skip if this participant already has enough facts
     for (const targetUserId of participantUserIds) {
-      if (targetUserId === fact.userId) {
+      if (Number(targetUserId) === Number(fact.userId)) {
         // Skip own facts
         continue;
       }

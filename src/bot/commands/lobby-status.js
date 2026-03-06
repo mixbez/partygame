@@ -35,7 +35,9 @@ export async function lobbyStatusCommand(ctx) {
     );
 
     const participants = participantsResult.rows;
-    const passwordInfo = lobby.password ? `${lobby.password}` : 'none';
+    const passwordInfo = lobby.password
+      ? (isHost ? lobby.password : 'yes (ask the host)')
+      : 'none';
 
     let message = `Lobby #${lobbyId}\n`;
     message += `Status: ${lobby.status}\n`;

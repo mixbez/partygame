@@ -68,6 +68,8 @@ export async function setupGameRoutes(app) {
         game: {
           lobbyId,
           status: lobby.status,
+          mode: lobby.mode,
+          gameSecret: lobby.game_secret,
           facts: factsResult.rows.map(f => ({
             id: f.id,
             content: f.content,
@@ -181,10 +183,12 @@ export async function setupGameRoutes(app) {
     }
 
     try {
-      // Check if guess is correct
+      // Check if guess is correct — look up the fact AUTHOR's nickname (BUG-1 fix)
       const assignmentResult = await db.query(
-        `SELECT assigned_to_user_id FROM game_assignments
-         WHERE lobby_id = $1 AND fact_id = $2`,
+        `SELECT lp.nickname AS correct_nickname
+         FROM game_assignments ga
+         JOIN lobby_participants lp ON lp.lobby_id = ga.lobby_id AND lp.user_id = ga.from_user_id
+         WHERE ga.lobby_id = $1 AND ga.fact_id = $2`,
         [lobbyId, factId]
       );
 
@@ -193,16 +197,7 @@ export async function setupGameRoutes(app) {
         return { error: 'Fact not found in game' };
       }
 
-      const { assigned_to_user_id } = assignmentResult.rows[0];
-
-      // Get the nickname of the assigned player
-      const nicknameResult = await db.query(
-        `SELECT nickname FROM lobby_participants
-         WHERE lobby_id = $1 AND user_id = $2`,
-        [lobbyId, assigned_to_user_id]
-      );
-
-      const correctNickname = nicknameResult.rows[0].nickname;
+      const correctNickname = assignmentResult.rows[0].correct_nickname;
       const isCorrect = guessedNickname === correctNickname;
 
       // Record guess
