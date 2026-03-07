@@ -20,6 +20,20 @@ export async function createLobbyCommand(ctx) {
       [lobbyId, userId, true]
     );
 
+    // Copy host's facts to lobby_facts
+    const hostFactsResult = await db.query(
+      `SELECT id, content FROM facts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10`,
+      [userId]
+    );
+
+    for (const fact of hostFactsResult.rows) {
+      await db.query(
+        `INSERT INTO lobby_facts (lobby_id, user_id, content, source_fact_id)
+         VALUES ($1, $2, $3, $4)`,
+        [lobbyId, userId, fact.content, fact.id]
+      );
+    }
+
     await redis.set(`lobby:${lobbyId}`, {
       id: lobbyId, host_id: userId, status: 'waiting', participants: [userId],
     }, 3600);
