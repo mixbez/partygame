@@ -389,18 +389,18 @@ export default function HostDashboard({ lobbyId, hostToken }) {
             </button>
           )}
           {lobby.status === 'generated' && (
-            <>
-              <button
-                className="btn-primary"
-                onClick={startGame}
-                disabled={generating}
-              >
-                {generating ? '⏳ Starting...' : '🎮 Start Game'}
-              </button>
-              <button className="btn-secondary" onClick={handlePrintPreview}>
-                🖨️ Print Preview
-              </button>
-            </>
+            <button
+              className="btn-primary"
+              onClick={startGame}
+              disabled={generating}
+            >
+              {generating ? '⏳ Starting...' : '🎮 Start Game'}
+            </button>
+          )}
+          {(lobby.status === 'generated' || lobby.status === 'started') && (
+            <button className="btn-secondary" onClick={handlePrintPreview}>
+              🖨️ Print Preview
+            </button>
           )}
         </div>
       </section>
