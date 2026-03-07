@@ -95,44 +95,43 @@ export async function setupHostRoutes(app) {
       // Verify host token
       verifyHostToken(request, reply, id, hostId);
 
-      // Get participants with fact counts
+      // Get participants
       const participantsResult = await db.query(
-        `SELECT lp.*, u.username, u.first_name,
-                COUNT(f.id) as fact_count
+        `SELECT lp.*, u.username, u.first_name
          FROM lobby_participants lp
          LEFT JOIN users u ON lp.user_id = u.id
-         LEFT JOIN facts f ON f.user_id = lp.user_id AND f.id NOT IN (
-           SELECT fact_id FROM excluded_facts WHERE lobby_id = $1
-         )
          WHERE lp.lobby_id = $1
-         GROUP BY lp.id, u.id
          ORDER BY lp.id ASC`,
         [id]
       );
 
-      // Get all facts (including excluded ones)
-      const allFactsResult = await db.query(
-        `SELECT f.id, f.user_id, f.content, f.created_at,
-                CASE WHEN ef.id IS NOT NULL THEN true ELSE false END as excluded
-         FROM facts f
-         LEFT JOIN excluded_facts ef ON f.id = ef.fact_id AND ef.lobby_id = $1
-         WHERE f.user_id = ANY(
-           SELECT user_id FROM lobby_participants WHERE lobby_id = $1
-         )
-         ORDER BY f.user_id, f.created_at DESC`,
-        [id]
-      );
+      const participants = participantsResult.rows;
 
-      // Get excluded facts
-      const excludedFactsResult = await db.query(
-        'SELECT fact_id FROM excluded_facts WHERE lobby_id = $1',
+      // Get facts for each participant from lobby_facts
+      const participantsWithFacts = [];
+      for (const participant of participants) {
+        const factsResult = await db.query(
+          `SELECT id, content, added_by_host, created_at FROM lobby_facts
+           WHERE lobby_id = $1 AND user_id = $2
+           ORDER BY created_at ASC`,
+          [id, participant.user_id]
+        );
+        participantsWithFacts.push({
+          ...participant,
+          facts: factsResult.rows
+        });
+      }
+
+      // Get all facts from this lobby
+      const allFactsResult = await db.query(
+        `SELECT id, user_id, content, added_by_host, created_at FROM lobby_facts
+         WHERE lobby_id = $1
+         ORDER BY user_id, created_at ASC`,
         [id]
       );
-      const excludedFactIds = new Set(excludedFactsResult.rows.map(r => r.fact_id));
 
       // Validate game readiness
-      const participants = participantsResult.rows;
-      const totalAvailableFacts = allFactsResult.rows.filter(f => !f.excluded).length;
+      const totalAvailableFacts = allFactsResult.rows.length;
       const factsNeeded = participants.length * lobby.facts_per_player;
       const canGenerate = participants.length >= 2 && totalAvailableFacts >= factsNeeded;
 
@@ -148,113 +147,13 @@ export async function setupHostRoutes(app) {
       };
 
       return {
-        lobby: { ...lobby, participants },
+        lobby,
+        participants: participantsWithFacts,
         facts: allFactsResult.rows,
         validation
       };
     } catch (error) {
       console.error('❌ Error fetching dashboard:', error);
-      if (reply.statusCode === 401 || reply.statusCode === 403) {
-        return;
-      }
-      reply.code(500);
-      return { error: error.message };
-    }
-  });
-
-  // 2. Toggle fact exclusion (exclude/include)
-  app.post('/api/partygame/host/lobbies/:id/facts/:factId/toggle', async (request, reply) => {
-    const { id, factId } = request.params;
-
-    try {
-      const lobbyResult = await db.query(
-        'SELECT host_id, status FROM lobbies WHERE id = $1',
-        [id]
-      );
-
-      if (lobbyResult.rows.length === 0) {
-        reply.code(404);
-        return { error: 'Lobby not found' };
-      }
-
-      const lobby = lobbyResult.rows[0];
-      verifyHostToken(request, reply, id, lobby.host_id);
-
-      if (lobby.status !== 'waiting' && lobby.status !== 'generated') {
-        reply.code(400);
-        return { error: 'Cannot modify facts in this lobby state' };
-      }
-
-      // Check if fact is excluded
-      const excludedResult = await db.query(
-        'SELECT id FROM excluded_facts WHERE lobby_id = $1 AND fact_id = $2',
-        [id, factId]
-      );
-
-      if (excludedResult.rows.length > 0) {
-        // Remove from excluded
-        await db.query(
-          'DELETE FROM excluded_facts WHERE lobby_id = $1 AND fact_id = $2',
-          [id, factId]
-        );
-        return { ok: true, excluded: false };
-      } else {
-        // Add to excluded
-        await db.query(
-          'INSERT INTO excluded_facts (lobby_id, fact_id) VALUES ($1, $2)',
-          [id, factId]
-        );
-        return { ok: true, excluded: true };
-      }
-    } catch (error) {
-      console.error('❌ Error toggling fact:', error);
-      if (reply.statusCode === 401 || reply.statusCode === 403) {
-        return;
-      }
-      reply.code(500);
-      return { error: error.message };
-    }
-  });
-
-  // 3. Add manual fact by host
-  app.post('/api/partygame/host/lobbies/:id/facts/add', async (request, reply) => {
-    const { id } = request.params;
-    const { content } = request.body || {};
-
-    try {
-      if (!content || content.trim().length === 0) {
-        reply.code(400);
-        return { error: 'Fact content is required' };
-      }
-
-      const lobbyResult = await db.query(
-        'SELECT host_id, status FROM lobbies WHERE id = $1',
-        [id]
-      );
-
-      if (lobbyResult.rows.length === 0) {
-        reply.code(404);
-        return { error: 'Lobby not found' };
-      }
-
-      const lobby = lobbyResult.rows[0];
-      verifyHostToken(request, reply, id, lobby.host_id);
-
-      if (lobby.status !== 'waiting' && lobby.status !== 'generated') {
-        reply.code(400);
-        return { error: 'Cannot add facts in this lobby state' };
-      }
-
-      // Insert fact attributed to host
-      const result = await db.query(
-        'INSERT INTO facts (user_id, content) VALUES ($1, $2) RETURNING id, content, created_at',
-        [lobby.host_id, content.trim()]
-      );
-
-      const newFact = result.rows[0];
-      return { ok: true, fact: newFact };
-    } catch (error) {
-      console.error('❌ Error adding fact:', error);
       if (reply.statusCode === 401 || reply.statusCode === 403) {
         return;
       }
@@ -310,16 +209,13 @@ export async function setupHostRoutes(app) {
         return { error: 'Need at least 2 players to generate game' };
       }
 
-      // Get facts (excluding marked ones)
+      // Get facts from lobby_facts
       const factsResult = await db.query(
-        `SELECT f.id AS "factId", f.user_id AS "userId"
-         FROM facts f
-         WHERE f.user_id = ANY($1::BIGINT[])
-         AND f.id NOT IN (
-           SELECT fact_id FROM excluded_facts WHERE lobby_id = $2
-         )
-         ORDER BY f.id`,
-        [participants, id]
+        `SELECT lf.id AS "factId", lf.user_id AS "userId"
+         FROM lobby_facts lf
+         WHERE lf.lobby_id = $1
+         ORDER BY lf.id`,
+        [id]
       );
 
       const facts = factsResult.rows;
@@ -464,6 +360,239 @@ export async function setupHostRoutes(app) {
       return { lobby, printData };
     } catch (error) {
       console.error('❌ Error fetching print data:', error);
+      if (reply.statusCode === 401 || reply.statusCode === 403) {
+        return;
+      }
+      reply.code(500);
+      return { error: error.message };
+    }
+  });
+
+  // 7. PUT /api/partygame/host/lobbies/:id/settings - Update lobby settings
+  app.put('/api/partygame/host/lobbies/:id/settings', async (request, reply) => {
+    const { id } = request.params;
+    const { facts_per_player, facts_to_win, mode, password } = request.body || {};
+
+    try {
+      const lobbyResult = await db.query(
+        'SELECT host_id, status FROM lobbies WHERE id = $1',
+        [id]
+      );
+
+      if (lobbyResult.rows.length === 0) {
+        reply.code(404);
+        return { error: 'Lobby not found' };
+      }
+
+      const lobby = lobbyResult.rows[0];
+      verifyHostToken(request, reply, id, lobby.host_id);
+
+      if (lobby.status !== 'waiting') {
+        reply.code(400);
+        return { error: 'Can only change settings while lobby is waiting' };
+      }
+
+      // Validation
+      if (facts_per_player !== undefined && (typeof facts_per_player !== 'number' || facts_per_player < 1)) {
+        reply.code(400);
+        return { error: 'facts_per_player must be a number >= 1' };
+      }
+
+      if (facts_to_win !== undefined && (typeof facts_to_win !== 'number' || facts_to_win < 1)) {
+        reply.code(400);
+        return { error: 'facts_to_win must be a number >= 1' };
+      }
+
+      if (mode !== undefined && !['online', 'offline'].includes(mode)) {
+        reply.code(400);
+        return { error: 'mode must be "online" or "offline"' };
+      }
+
+      // Validate facts_to_win <= facts_per_player
+      const fpp = facts_per_player !== undefined ? facts_per_player : lobby.facts_per_player;
+      const ftw = facts_to_win !== undefined ? facts_to_win : lobby.facts_to_win;
+
+      if (ftw > fpp) {
+        reply.code(400);
+        return { error: 'facts_to_win cannot exceed facts_per_player' };
+      }
+
+      // Update
+      const updateResult = await db.query(
+        `UPDATE lobbies SET
+          facts_per_player = COALESCE($2, facts_per_player),
+          facts_to_win = COALESCE($3, facts_to_win),
+          mode = COALESCE($4, mode),
+          password = $5
+         WHERE id = $1
+         RETURNING *`,
+        [id, facts_per_player, facts_to_win, mode, password || null]
+      );
+
+      return { ok: true, lobby: updateResult.rows[0] };
+    } catch (error) {
+      console.error('❌ Error updating settings:', error);
+      if (reply.statusCode === 401 || reply.statusCode === 403) {
+        return;
+      }
+      reply.code(500);
+      return { error: error.message };
+    }
+  });
+
+  // 8. DELETE /api/partygame/host/lobbies/:id/participants/:userId - Kick participant
+  app.delete('/api/partygame/host/lobbies/:id/participants/:userId', async (request, reply) => {
+    const { id, userId } = request.params;
+
+    try {
+      const lobbyResult = await db.query(
+        'SELECT host_id, status FROM lobbies WHERE id = $1',
+        [id]
+      );
+
+      if (lobbyResult.rows.length === 0) {
+        reply.code(404);
+        return { error: 'Lobby not found' };
+      }
+
+      const lobby = lobbyResult.rows[0];
+      verifyHostToken(request, reply, id, lobby.host_id);
+
+      if (lobby.status !== 'waiting') {
+        reply.code(400);
+        return { error: 'Can only kick participants while lobby is waiting' };
+      }
+
+      if (Number(lobby.host_id) === Number(userId)) {
+        reply.code(400);
+        return { error: 'Cannot kick the host' };
+      }
+
+      // Delete player's facts from lobby
+      await db.query(
+        'DELETE FROM lobby_facts WHERE lobby_id = $1 AND user_id = $2',
+        [id, userId]
+      );
+
+      // Remove participant
+      await db.query(
+        'DELETE FROM lobby_participants WHERE lobby_id = $1 AND user_id = $2',
+        [id, userId]
+      );
+
+      return { ok: true };
+    } catch (error) {
+      console.error('❌ Error kicking participant:', error);
+      if (reply.statusCode === 401 || reply.statusCode === 403) {
+        return;
+      }
+      reply.code(500);
+      return { error: error.message };
+    }
+  });
+
+  // 9. POST /api/partygame/host/lobbies/:id/participants/:userId/facts - Add fact for participant
+  app.post('/api/partygame/host/lobbies/:id/participants/:userId/facts', async (request, reply) => {
+    const { id, userId } = request.params;
+    const { content } = request.body || {};
+
+    try {
+      if (!content || typeof content !== 'string' || content.length < 5 || content.length > 500) {
+        reply.code(400);
+        return { error: 'Fact content must be 5-500 characters' };
+      }
+
+      const lobbyResult = await db.query(
+        'SELECT host_id, status FROM lobbies WHERE id = $1',
+        [id]
+      );
+
+      if (lobbyResult.rows.length === 0) {
+        reply.code(404);
+        return { error: 'Lobby not found' };
+      }
+
+      const lobby = lobbyResult.rows[0];
+      verifyHostToken(request, reply, id, lobby.host_id);
+
+      if (lobby.status !== 'waiting') {
+        reply.code(400);
+        return { error: 'Can only add facts while lobby is waiting' };
+      }
+
+      // Verify participant is in lobby
+      const participantResult = await db.query(
+        'SELECT id FROM lobby_participants WHERE lobby_id = $1 AND user_id = $2',
+        [id, userId]
+      );
+
+      if (participantResult.rows.length === 0) {
+        reply.code(400);
+        return { error: 'Participant not in this lobby' };
+      }
+
+      // Add fact
+      const result = await db.query(
+        `INSERT INTO lobby_facts (lobby_id, user_id, content, added_by_host)
+         VALUES ($1, $2, $3, true)
+         RETURNING id, content, added_by_host, created_at`,
+        [id, userId, content.trim()]
+      );
+
+      return { ok: true, fact: result.rows[0] };
+    } catch (error) {
+      console.error('❌ Error adding fact:', error);
+      if (reply.statusCode === 401 || reply.statusCode === 403) {
+        return;
+      }
+      reply.code(500);
+      return { error: error.message };
+    }
+  });
+
+  // 10. DELETE /api/partygame/host/lobbies/:id/facts/:factId - Delete fact from lobby
+  app.delete('/api/partygame/host/lobbies/:id/facts/:factId', async (request, reply) => {
+    const { id, factId } = request.params;
+
+    try {
+      const lobbyResult = await db.query(
+        'SELECT host_id, status FROM lobbies WHERE id = $1',
+        [id]
+      );
+
+      if (lobbyResult.rows.length === 0) {
+        reply.code(404);
+        return { error: 'Lobby not found' };
+      }
+
+      const lobby = lobbyResult.rows[0];
+      verifyHostToken(request, reply, id, lobby.host_id);
+
+      if (lobby.status !== 'waiting') {
+        reply.code(400);
+        return { error: 'Can only delete facts while lobby is waiting' };
+      }
+
+      // Verify fact belongs to this lobby
+      const factResult = await db.query(
+        'SELECT id FROM lobby_facts WHERE id = $1 AND lobby_id = $2',
+        [factId, id]
+      );
+
+      if (factResult.rows.length === 0) {
+        reply.code(404);
+        return { error: 'Fact not found in this lobby' };
+      }
+
+      // Delete
+      await db.query(
+        'DELETE FROM lobby_facts WHERE id = $1 AND lobby_id = $2',
+        [factId, id]
+      );
+
+      return { ok: true };
+    } catch (error) {
+      console.error('❌ Error deleting fact:', error);
       if (reply.statusCode === 401 || reply.statusCode === 403) {
         return;
       }
