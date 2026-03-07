@@ -341,9 +341,9 @@ export async function setupHostRoutes(app) {
       const printData = [];
       for (const participant of participantsResult.rows) {
         const factsResult = await db.query(
-          `SELECT f.id, f.content
+          `SELECT lf.id, lf.content
            FROM game_assignments ga
-           JOIN facts f ON ga.fact_id = f.id
+           JOIN lobby_facts lf ON ga.fact_id = lf.id
            WHERE ga.lobby_id = $1 AND ga.assigned_to_user_id = $2
            ORDER BY ga.id ASC`,
           [id, participant.user_id]

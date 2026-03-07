@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS lobby_facts (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_lobby_facts_lobby ON lobby_facts(lobby_id);
-CREATE INDEX idx_lobby_facts_user ON lobby_facts(lobby_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_lobby_facts_lobby ON lobby_facts(lobby_id);
+CREATE INDEX IF NOT EXISTS idx_lobby_facts_user ON lobby_facts(lobby_id, user_id);
 
 -- Clean up old data: delete all game_assignments and lobbies
 -- (They are from the old facts-based schema, need to recreate with new lobby_facts schema)

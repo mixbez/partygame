@@ -92,7 +92,7 @@ export async function startGameCommand(ctx) {
 
         // Get this player's facts
         const playerFactsResult = await db.query(
-          `SELECT f.content FROM game_assignments ga
+          `SELECT lf.content FROM game_assignments ga
            JOIN lobby_facts lf ON ga.fact_id = lf.id
            WHERE ga.lobby_id = $1 AND ga.assigned_to_user_id = $2
            ORDER BY ga.id ASC`,
