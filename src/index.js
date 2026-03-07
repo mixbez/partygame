@@ -95,7 +95,7 @@ async function start() {
     await setupLobbiesRoutes(app);
     await setupFactsRoutes(app);
     await setupGameRoutes(app);
-    await setupHostRoutes(app);
+    await setupHostRoutes(app, bot);
     console.log('✅ API routes registered');
 
     // Set webhook in production

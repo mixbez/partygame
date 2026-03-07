@@ -206,6 +206,34 @@ export default function HostDashboard({ lobbyId, hostToken }) {
     }
   }
 
+  async function startGame() {
+    try {
+      setGenerating(true);
+      const response = await fetch(
+        `/api/partygame/host/lobbies/${lobbyId}/start`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${hostToken}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to start game');
+      }
+
+      setError(null);
+      await loadDashboard();
+      alert('✅ Game started! Players have been notified.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   function handlePrintPreview() {
     window.location.href = `/game/print/${lobbyId}?token=${hostToken}`;
   }
@@ -351,17 +379,28 @@ export default function HostDashboard({ lobbyId, hostToken }) {
         </div>
 
         <div className="action-buttons">
-          <button
-            className="btn-primary"
-            onClick={generateGame}
-            disabled={!validation?.canGenerate || generating}
-          >
-            {generating ? '⏳ Generating...' : '🚀 Generate Game'}
-          </button>
-          {lobby.status === 'generated' && (
-            <button className="btn-secondary" onClick={handlePrintPreview}>
-              🖨️ Print Preview
+          {lobby.status === 'waiting' && (
+            <button
+              className="btn-primary"
+              onClick={generateGame}
+              disabled={!validation?.canGenerate || generating}
+            >
+              {generating ? '⏳ Generating...' : '🚀 Generate Game'}
             </button>
+          )}
+          {lobby.status === 'generated' && (
+            <>
+              <button
+                className="btn-primary"
+                onClick={startGame}
+                disabled={generating}
+              >
+                {generating ? '⏳ Starting...' : '🎮 Start Game'}
+              </button>
+              <button className="btn-secondary" onClick={handlePrintPreview}>
+                🖨️ Print Preview
+              </button>
+            </>
           )}
         </div>
       </section>

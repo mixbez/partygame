@@ -23,7 +23,7 @@ function verifyHostToken(request, reply, lobbyId, hostId) {
   }
 }
 
-export async function setupHostRoutes(app) {
+export async function setupHostRoutes(app, bot) {
   const db = getDb();
 
   // Generate host token for dashboard access (authentication)
@@ -593,6 +593,95 @@ export async function setupHostRoutes(app) {
       return { ok: true };
     } catch (error) {
       console.error('❌ Error deleting fact:', error);
+      if (reply.statusCode === 401 || reply.statusCode === 403) {
+        return;
+      }
+      reply.code(500);
+      return { error: error.message };
+    }
+  });
+
+  // 11. POST /api/partygame/host/lobbies/:id/start - Start the game and notify players
+  app.post('/api/partygame/host/lobbies/:id/start', async (request, reply) => {
+    const { id } = request.params;
+
+    try {
+      const lobbyResult = await db.query(
+        'SELECT host_id, status FROM lobbies WHERE id = $1',
+        [id]
+      );
+
+      if (lobbyResult.rows.length === 0) {
+        reply.code(404);
+        return { error: 'Lobby not found' };
+      }
+
+      const lobby = lobbyResult.rows[0];
+      verifyHostToken(request, reply, id, lobby.host_id);
+
+      if (lobby.status !== 'generated') {
+        reply.code(400);
+        return { error: 'Game must be generated before starting' };
+      }
+
+      // Get participants with game URLs
+      const participantsResult = await db.query(
+        `SELECT user_id, game_url, nickname FROM lobby_participants WHERE lobby_id = $1`,
+        [id]
+      );
+
+      const participants = participantsResult.rows;
+
+      if (participants.length < 2) {
+        reply.code(400);
+        return { error: 'Lobby has less than 2 players' };
+      }
+
+      // Send game links to all participants via Telegram
+      let notifiedCount = 0;
+      for (const participant of participants) {
+        try {
+          let message = `🎮 Game #${id} started!\n\n`;
+          message += `Your nickname: ${participant.nickname}\n\n`;
+          message += `Facts to guess:\n`;
+
+          // Get this player's facts
+          const playerFactsResult = await db.query(
+            `SELECT lf.content FROM game_assignments ga
+             JOIN lobby_facts lf ON ga.fact_id = lf.id
+             WHERE ga.lobby_id = $1 AND ga.assigned_to_user_id = $2
+             ORDER BY ga.id ASC`,
+            [id, participant.user_id]
+          );
+
+          playerFactsResult.rows.forEach((f, i) => {
+            message += `${i + 1}. ${f.content}\n`;
+          });
+
+          message += `\nMatch each fact to the right player nickname!\n\n`;
+          message += `🔗 Play: ${participant.game_url}`;
+
+          await bot.telegram.sendMessage(participant.user_id, message);
+          notifiedCount++;
+          console.log(`✅ Notified player ${participant.user_id}`);
+        } catch (err) {
+          console.error(`❌ Failed to notify player ${participant.user_id}: ${err.message}`);
+        }
+      }
+
+      // Update lobby status to 'started'
+      await db.query(
+        'UPDATE lobbies SET status = $1, started_at = CURRENT_TIMESTAMP WHERE id = $2',
+        ['started', id]
+      );
+
+      return {
+        ok: true,
+        notifiedCount,
+        totalPlayers: participants.length
+      };
+    } catch (error) {
+      console.error('❌ Error starting game:', error);
       if (reply.statusCode === 401 || reply.statusCode === 403) {
         return;
       }
