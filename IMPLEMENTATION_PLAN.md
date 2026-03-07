@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS lobby_facts (
     user_id BIGINT NOT NULL REFERENCES users(id),       -- "автор" факта
     content TEXT NOT NULL,
     added_by_host BOOLEAN DEFAULT false,                 -- true если хост добавил за участника
-    source_fact_id INT REFERENCES facts(id),             -- ссылка на оригинал (NULL если добавлен хостом)
+    source_fact_id INT REFERENCES facts(id) ON DELETE SET NULL, -- ссылка на оригинал (NULL если добавлен хостом или оригинал удалён)
     created_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX idx_lobby_facts_lobby ON lobby_facts(lobby_id);
