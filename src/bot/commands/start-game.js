@@ -75,8 +75,8 @@ export async function startGameCommand(ctx) {
 
     // Get facts for this lobby (for the message)
     const factsResult = await db.query(
-      `SELECT DISTINCT f.content FROM game_assignments ga
-       JOIN facts f ON ga.fact_id = f.id
+      `SELECT DISTINCT lf.content FROM game_assignments ga
+       JOIN lobby_facts lf ON ga.fact_id = lf.id
        WHERE ga.lobby_id = $1
        LIMIT 3`,
       [lobbyId]
@@ -93,7 +93,7 @@ export async function startGameCommand(ctx) {
         // Get this player's facts
         const playerFactsResult = await db.query(
           `SELECT f.content FROM game_assignments ga
-           JOIN facts f ON ga.fact_id = f.id
+           JOIN lobby_facts lf ON ga.fact_id = lf.id
            WHERE ga.lobby_id = $1 AND ga.assigned_to_user_id = $2
            ORDER BY ga.id ASC`,
           [lobbyId, participant.user_id]

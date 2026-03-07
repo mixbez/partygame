@@ -48,9 +48,9 @@ export async function setupGameRoutes(app) {
 
       // Get facts assigned to this player (as answers they need to match)
       const factsResult = await db.query(
-        `SELECT f.id, f.content, ga.answer_hash
+        `SELECT lf.id, lf.content, ga.answer_hash
          FROM game_assignments ga
-         JOIN facts f ON ga.fact_id = f.id
+         JOIN lobby_facts lf ON ga.fact_id = lf.id
          WHERE ga.lobby_id = $1 AND ga.assigned_to_user_id = $2`,
         [lobbyId, playerId]
       );
