@@ -25,7 +25,7 @@ export async function createLobbyCommand(ctx) {
     }, 3600);
 
     const message = `
-✅ Lobby #${lobbyId} created!
+✅ Lobby #${lobbyId} created! (You're in)
 
 Settings:
 - Facts per player: 10
@@ -34,8 +34,8 @@ Settings:
 - Password: none
 
 What to do next:
-/lobby_status ${lobbyId} — view current players
-/join_lobby ${lobbyId} — share this with friends
+1️⃣ /lobby_status ${lobbyId} — view current players
+2️⃣ Share with friends: /join_lobby ${lobbyId}
 
 Change settings (while waiting):
 /edit_lobby ${lobbyId} facts_per_player 5
@@ -43,8 +43,12 @@ Change settings (while waiting):
 /edit_lobby ${lobbyId} mode offline
 /edit_lobby ${lobbyId} password secret123
 
-When everyone joined:
-/start_game ${lobbyId}
+When everyone joined & added facts:
+🎮 Use host dashboard to generate game
+📊 /my_lobbies → click Dashboard link
+
+Then:
+/start_game ${lobbyId} — send game links to players
 
 Cancel:
 /cancel_lobby ${lobbyId}
