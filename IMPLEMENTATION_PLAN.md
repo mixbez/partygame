@@ -29,9 +29,19 @@ CREATE TABLE IF NOT EXISTS lobby_facts (
 );
 CREATE INDEX idx_lobby_facts_lobby ON lobby_facts(lobby_id);
 CREATE INDEX idx_lobby_facts_user ON lobby_facts(lobby_id, user_id);
+
+-- Перевести FK в game_assignments с facts на lobby_facts
+ALTER TABLE game_assignments DROP CONSTRAINT IF EXISTS game_assignments_fact_id_fkey;
+ALTER TABLE game_assignments ADD CONSTRAINT game_assignments_fact_id_fkey
+    FOREIGN KEY (fact_id) REFERENCES lobby_facts(id) ON DELETE CASCADE;
+
+-- Убить все waiting-лобби (у них нет lobby_facts, проще пересоздать)
+DELETE FROM lobbies WHERE status = 'waiting';
 ```
 
 **Зачем:** Сейчас факты глобальные (таблица `facts`, привязаны к `user_id`). При входе в лобби они копируются сюда. Дальше внутри лобби работаем только с `lobby_facts`. Если участник потом удалит/изменит свои глобальные факты — в лобби останутся зафиксированные копии.
+
+**Важно:** `game_assignments.fact_id` сейчас ссылается на `facts(id)`. После миграции генерация будет записывать туда id из `lobby_facts`. Если не поменять FK — INSERT в `game_assignments` упадёт с ошибкой foreign key violation. Поэтому в этой же миграции меняем FK.
 
 ---
 
@@ -177,13 +187,33 @@ SELECT * FROM lobby_facts WHERE lobby_id = :id
 
 Остальная логика (distributeFacts, nicknames, game_assignments) — **без изменений**, просто источник данных меняется.
 
-#### 4.3. `POST /api/partygame/host/lobbies/:id/facts/add` — добавление факта хостом
+#### 4.3. `POST /api/partygame/host/lobbies/:id/facts/add` — **удалить**
 
-Сейчас добавляет факт в глобальную `facts` от имени хоста. Нужно изменить:
+Этот эндпоинт дублирует новый 3.3 (`POST .../participants/:userId/facts`). Удалить старый, на фронте использовать только новый.
 
-- Добавлять в `lobby_facts` (не в `facts`)
-- Принимать параметр `user_id` — от чьего имени факт
-- Если `user_id` не передан — считать, что от хоста
+#### 4.4. Перевести game-time запросы на `lobby_facts`
+
+Все запросы, которые джойнят `game_assignments` на `facts`, нужно перевести на `lobby_facts`:
+
+**Файл: `src/bot/commands/start-game.js`** — два запроса:
+```sql
+-- Было:
+SELECT DISTINCT f.content FROM game_assignments ga JOIN facts f ON ga.fact_id = f.id ...
+SELECT f.content FROM game_assignments ga JOIN facts f ON ga.fact_id = f.id ...
+
+-- Стало:
+SELECT DISTINCT lf.content FROM game_assignments ga JOIN lobby_facts lf ON ga.fact_id = lf.id ...
+SELECT lf.content FROM game_assignments ga JOIN lobby_facts lf ON ga.fact_id = lf.id ...
+```
+
+**Файл: `src/api/game.js`** — три запроса:
+```sql
+-- GET game data (line ~50): JOIN facts f ON ga.fact_id = f.id → JOIN lobby_facts lf ON ga.fact_id = lf.id
+-- POST validate (line ~112): аналогично (тут join на lobby_participants, facts не используется — проверить)
+-- POST guess (line ~187): аналогично
+```
+
+**Файл: `src/bot/commands/lobby-status.js`** — сейчас не показывает количество фактов, но если нужно добавить — брать из `lobby_facts`.
 
 ---
 
@@ -227,19 +257,20 @@ SELECT * FROM lobby_facts WHERE lobby_id = :id
 
 Делай **строго последовательно**, каждый шаг — отдельный коммит:
 
-1. **Миграция** `006_lobby_facts.sql` — создать таблицу
+1. **Миграция** `006_lobby_facts.sql` — создать таблицу + перевести FK в `game_assignments` + убить waiting-лобби
 2. **`join-lobby.js` + `create-lobby.js`** — копирование фактов при входе
-3. **Новые API-эндпоинты** в `host.js` (settings, kick, add fact, delete fact)
-4. **Изменить существующие эндпоинты** (dashboard GET, generate, facts/add)
-5. **Фронтенд** — блок настроек, управление участниками и фактами
+3. **Новые API-эндпоинты** в `host.js` (settings, kick, add fact, delete fact) + удалить старый `facts/add`
+4. **Изменить существующие эндпоинты** (dashboard GET, generate)
+5. **Перевести game-time запросы** — `start-game.js`, `game.js`: заменить JOIN на `facts` → JOIN на `lobby_facts`
+6. **Фронтенд** — блок настроек, управление участниками и фактами
 
 ---
 
 ### 7. Что НЕ трогать
 
-- Команды Telegram (`/edit_lobby`, `/join_lobby`, `/leave_lobby` и т.д.) — **оставить как есть**. Они работают параллельно с фронтом. `/edit_lobby` меняет `lobbies` напрямую — это ок.
+- Команды Telegram (`/edit_lobby`, `/join_lobby` и т.д.) — **оставить как есть**. Они работают параллельно с фронтом. `/edit_lobby` меняет `lobbies` напрямую — это ок.
 - Таблицу `facts` — она остаётся для глобальных фактов пользователя (добавление через бот). `lobby_facts` — копия для конкретного лобби.
-- `GameScreen.jsx`, `PrintPreview.jsx` — gameplay не меняется.
+- `GameScreen.jsx`, `PrintPreview.jsx` — gameplay UI не меняется.
 - Алгоритм `generator.js` (distributeFacts, generateNicknames) — не трогаем, только меняем откуда берём факты.
 
 ---
@@ -256,5 +287,8 @@ SELECT * FROM lobby_facts WHERE lobby_id = :id
 - [ ] Хост может добавить факт от имени любого участника
 - [ ] Хост может удалить любой факт из лобби
 - [ ] Генерация игры работает с `lobby_facts`
+- [ ] /start_game отправляет факты игрокам (джойнит `lobby_facts`, не `facts`)
+- [ ] GameScreen загружает факты через `game.js` (джойнит `lobby_facts`)
+- [ ] Угадывание фактов (guess) работает корректно
 - [ ] Телеграм-команды продолжают работать
 - [ ] /edit_lobby по-прежнему работает
