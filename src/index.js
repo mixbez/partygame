@@ -12,6 +12,7 @@ import { startBot } from './bot/index.js';
 import { setupLobbiesRoutes } from './api/lobbies.js';
 import { setupFactsRoutes } from './api/facts.js';
 import { setupGameRoutes } from './api/game.js';
+import { setupHostRoutes } from './api/host.js';
 
 const app = Fastify({
   logger: {
@@ -74,20 +75,27 @@ async function start() {
     await startBot(bot);
     console.log('✅ Bot initialized');
 
-    // Serve frontend static files at /game
+    // Serve frontend static files at /game (SPA mode)
     await app.register(fastifyStatic, {
       root: join(__dirname, '../frontend-dist'),
       prefix: '/game/',
       index: 'index.html',
     });
-    // Serve index.html for /game (without trailing slash, query params preserved)
+
+    // Serve index.html for /game routes (client-side routing)
     app.get('/game', (req, reply) => reply.sendFile('index.html'));
+
+    // Catch-all for /game/* - serve index.html to enable SPA routing
+    app.setNotFoundHandler({ prefix: '/game' }, (req, reply) => {
+      reply.sendFile('index.html');
+    });
 
     // Register API routes
     console.log('📍 Registering API routes...');
     await setupLobbiesRoutes(app);
     await setupFactsRoutes(app);
     await setupGameRoutes(app);
+    await setupHostRoutes(app);
     console.log('✅ API routes registered');
 
     // Set webhook in production

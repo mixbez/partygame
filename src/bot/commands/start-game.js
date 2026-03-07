@@ -1,5 +1,4 @@
 import { getDb } from '../../db/index.js';
-import { handleStartGame } from '../handlers/game-flow.js';
 
 export async function startGameCommand(ctx) {
   const args = ctx.message.text.split(' ');
@@ -32,26 +31,96 @@ export async function startGameCommand(ctx) {
       return;
     }
 
-    if (lobby.status !== 'waiting') {
+    // Check if host is a participant in the lobby
+    const hostParticipantResult = await db.query(
+      'SELECT id FROM lobby_participants WHERE lobby_id = $1 AND user_id = $2',
+      [lobbyId, userId]
+    );
+
+    if (hostParticipantResult.rows.length === 0) {
+      await ctx.reply(
+        `❌ Host must join the lobby to start the game.\n\n` +
+        `Use: /join_lobby ${lobbyId}`
+      );
+      return;
+    }
+
+    // Check if game is in 'generated' state (pre-generated via dashboard)
+    if (lobby.status === 'waiting') {
+      await ctx.reply(
+        `❌ Game has not been generated yet.\n\n` +
+        `Please generate the game using the host dashboard first:\n` +
+        `${process.env.BOT_WEBHOOK_URL}/game/host/${lobbyId}`
+      );
+      return;
+    }
+
+    if (lobby.status !== 'generated') {
       await ctx.reply(`❌ Game is already ${lobby.status}. Can't start again.`);
       return;
     }
 
-    // Get participants
+    // Get participants with game URLs
     const participantsResult = await db.query(
-      'SELECT user_id FROM lobby_participants WHERE lobby_id = $1',
+      `SELECT user_id, game_url, nickname FROM lobby_participants WHERE lobby_id = $1`,
       [lobbyId]
     );
 
-    const participants = participantsResult.rows.map(r => r.user_id);
+    const participants = participantsResult.rows;
 
     if (participants.length < 2) {
-      await ctx.reply('❌ Need at least 2 players to start the game.');
+      await ctx.reply('❌ Lobby has less than 2 players.');
       return;
     }
 
-    // Call the game start logic (it sends its own confirmation message)
-    await handleStartGame(ctx, lobbyId);
+    // Get facts for this lobby (for the message)
+    const factsResult = await db.query(
+      `SELECT DISTINCT f.content FROM game_assignments ga
+       JOIN facts f ON ga.fact_id = f.id
+       WHERE ga.lobby_id = $1
+       LIMIT 3`,
+      [lobbyId]
+    );
+
+    // Send game links to all participants
+    let notifiedCount = 0;
+    for (const participant of participants) {
+      try {
+        let message = `🎮 Game #${lobbyId} started!\n\n`;
+        message += `Your nickname: ${participant.nickname}\n\n`;
+        message += `Facts to guess:\n`;
+
+        // Get this player's facts
+        const playerFactsResult = await db.query(
+          `SELECT f.content FROM game_assignments ga
+           JOIN facts f ON ga.fact_id = f.id
+           WHERE ga.lobby_id = $1 AND ga.assigned_to_user_id = $2
+           ORDER BY ga.id ASC`,
+          [lobbyId, participant.user_id]
+        );
+
+        playerFactsResult.rows.forEach((f, i) => {
+          message += `${i + 1}. ${f.content}\n`;
+        });
+
+        message += `\nMatch each fact to the right player nickname!\n\n`;
+        message += `🔗 Play: ${participant.game_url}`;
+
+        await ctx.telegram.sendMessage(participant.user_id, message);
+        notifiedCount++;
+        console.log(`✅ Notified player ${participant.user_id}`);
+      } catch (err) {
+        console.error(`❌ Failed to notify player ${participant.user_id}: ${err.message}`);
+      }
+    }
+
+    // Update lobby status to 'started'
+    await db.query(
+      'UPDATE lobbies SET status = $1, started_at = CURRENT_TIMESTAMP WHERE id = $2',
+      ['started', lobbyId]
+    );
+
+    await ctx.reply(`✅ Game started! Notified ${notifiedCount}/${participants.length} players.`);
   } catch (error) {
     console.error('❌ Error starting game:', error);
     await ctx.reply('❌ Error starting the game. Try again later.');

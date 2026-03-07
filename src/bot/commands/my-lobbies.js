@@ -1,8 +1,17 @@
 import { getDb } from '../../db/index.js';
+import crypto from 'crypto';
+
+function generateHostToken(userId, lobbyId) {
+  return crypto
+    .createHash('sha256')
+    .update(`${userId}:${lobbyId}:${process.env.JWT_SECRET || 'secret'}`)
+    .digest('hex');
+}
 
 export async function myLobbiesCommand(ctx) {
   const userId = ctx.from.id;
   const db = getDb();
+  console.log(`🎮 /my_lobbies from user ${userId}`);
 
   try {
     const hostedResult = await db.query(
@@ -35,8 +44,18 @@ export async function myLobbiesCommand(ctx) {
       hostedResult.rows.forEach((lobby) => {
         const icon = lobby.status === 'waiting' ? '⏳' : lobby.status === 'started' ? '🎮' : '✅';
         message += `${icon} #${lobby.id} — ${lobby.status}\n`;
+
+        const baseUrl = process.env.BOT_WEBHOOK_URL || 'https://v2202504269079335176.supersrv.de';
+
         if (lobby.status === 'waiting') {
-          message += `   /lobby_status ${lobby.id} | /start_game ${lobby.id} | /cancel_lobby ${lobby.id}\n`;
+          const token = generateHostToken(userId, lobby.id);
+          const dashboardUrl = `${baseUrl}/game/host/${lobby.id}?token=${token}`;
+          message += `   📊 <a href="${dashboardUrl}">Dashboard</a> | /start_game ${lobby.id} | /cancel_lobby ${lobby.id}\n`;
+        } else if (lobby.status === 'generated') {
+          const token = generateHostToken(userId, lobby.id);
+          const dashboardUrl = `${baseUrl}/game/host/${lobby.id}?token=${token}`;
+          const printUrl = `${baseUrl}/game/print/${lobby.id}?token=${token}`;
+          message += `   📊 <a href="${dashboardUrl}">Dashboard</a> | 🖨️ <a href="${printUrl}">Print</a> | /start_game ${lobby.id}\n`;
         } else if (lobby.status === 'started') {
           message += `   /lobby_status ${lobby.id} | /end_game ${lobby.id}\n`;
         } else {
@@ -55,9 +74,11 @@ export async function myLobbiesCommand(ctx) {
       });
     }
 
-    await ctx.reply(message);
+    console.log(`✅ Sending message with ${hostedResult.rows.length} hosted lobbies`);
+    await ctx.reply(message, { parse_mode: 'HTML' });
   } catch (error) {
     console.error('❌ Error in my_lobbies:', error);
+    console.error('Stack:', error.stack);
     await ctx.reply('❌ Error loading lobbies. Try again later.');
   }
 }
