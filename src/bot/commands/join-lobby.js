@@ -92,10 +92,6 @@ export async function joinLobbyCommand(ctx) {
     replyMsg += `Check status: /lobby_status ${lobbyId}`;
 
     await ctx.reply(replyMsg);
-      `✅ You joined lobby #${lobbyId}!\n\n` +
-      `Waiting for the host to start the game.\n\n` +
-      `Check status: /lobby_status ${lobbyId}`
-    );
   } catch (error) {
     console.error('❌ Error joining lobby:', error);
     await ctx.reply('❌ Error joining lobby. Try again later.');
