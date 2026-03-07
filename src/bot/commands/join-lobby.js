@@ -49,19 +49,6 @@ export async function joinLobbyCommand(ctx) {
       }
     }
 
-    const factsResult = await db.query(
-      'SELECT COUNT(*) as count FROM facts WHERE user_id = $1',
-      [userId]
-    );
-
-    if (parseInt(factsResult.rows[0].count) === 0) {
-      await ctx.reply(
-        '❌ You need at least 1 fact to join a lobby.\n\n' +
-        'Add a fact first: just send me any text message, then try again.'
-      );
-      return;
-    }
-
     const existingResult = await db.query(
       'SELECT id FROM lobby_participants WHERE lobby_id = $1 AND user_id = $2',
       [lobbyId, userId]
@@ -80,11 +67,31 @@ export async function joinLobbyCommand(ctx) {
       [lobbyId, userId, false]
     );
 
-    await ctx.reply(
-      `✅ You joined lobby #${lobbyId}!\n\n` +
-      `Waiting for the host to start the game.\n\n` +
-      `Check status: /lobby_status ${lobbyId}`
+    // Copy player's facts to lobby_facts (last 10 facts)
+    const playerFactsResult = await db.query(
+      `SELECT id, content FROM facts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10`,
+      [userId]
     );
+
+    for (const fact of playerFactsResult.rows) {
+      await db.query(
+        `INSERT INTO lobby_facts (lobby_id, user_id, content, source_fact_id)
+         VALUES ($1, $2, $3, $4)`,
+        [lobbyId, userId, fact.content, fact.id]
+      );
+    }
+
+    const factCount = playerFactsResult.rows.length;
+    let replyMsg = `✅ You joined lobby #${lobbyId}!\n\n`;
+    if (factCount > 0) {
+      replyMsg += `✅ Copied ${factCount} of your facts to this lobby.\n\n`;
+    } else {
+      replyMsg += `⚠️ You have no facts yet. The host can add facts for you.\n\n`;
+    }
+    replyMsg += `Waiting for the host to start the game.\n\n`;
+    replyMsg += `Check status: /lobby_status ${lobbyId}`;
+
+    await ctx.reply(replyMsg);
   } catch (error) {
     console.error('❌ Error joining lobby:', error);
     await ctx.reply('❌ Error joining lobby. Try again later.');
